@@ -780,12 +780,17 @@
     function fmtToken(value) {
       const num = Number(value || 0);
       if (Math.abs(num) < 1000) return fmt(num);
-      const kValue = Math.round(num / 100) / 10;
-      return `${nf.format(kValue)}K`;
+      const kValue = num / 1000;
+      if (Math.abs(kValue) < 10) return `${nf.format(Math.round(kValue * 10) / 10)}K`;
+      return `${nf.format(Math.round(kValue))}K`;
     }
 
     function tokenTitle(label, value) {
       return `${label}：${fmt(value)}`;
+    }
+
+    function tokenHoverTitle(label, value) {
+      return Math.abs(Number(value || 0)) >= 1000 ? tokenTitle(label, value) : "";
     }
 
     function escapeHtml(value) {
@@ -916,7 +921,7 @@
     function renderConversation(target, metaTarget, source, fallbackMeta) {
       const usage = usageOf(source && source.usage);
       ids(target).innerHTML = TOKEN_FIELDS.map((field) => `
-        <div class="mini" title="${tokenTitle(field.label, usage[field.key])}">
+        <div class="mini" title="${tokenHoverTitle(field.label, usage[field.key])}">
           <label>${field.label}</label>
           <strong>${fmtToken(usage[field.key])}</strong>
         </div>
