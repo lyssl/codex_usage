@@ -623,6 +623,39 @@ def timestamp_text(value: Any) -> str:
     return datetime.fromtimestamp(seconds, tz=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
 
 
+def timestamp_ms(value: Any) -> int | None:
+    try:
+        return int(value) * 1000
+    except (TypeError, ValueError):
+        return None
+
+
+def display_project_name(cwd: str) -> str:
+    if not cwd:
+        return "未知项目"
+    name = Path(cwd).name
+    return name or cwd
+
+
+def load_session_index(codex_home: Path) -> dict[str, str]:
+    index_file = codex_home / "session_index.jsonl"
+    names: dict[str, str] = {}
+    try:
+        with index_file.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                session_id = item.get("id")
+                thread_name = item.get("thread_name")
+                if isinstance(session_id, str) and isinstance(thread_name, str) and thread_name:
+                    names[session_id] = thread_name
+    except OSError:
+        pass
+    return names
+
+
 def iter_session_files(codex_home: Path) -> list[Path]:
     files: list[Path] = []
     sessions = codex_home / "sessions"
@@ -706,6 +739,7 @@ def parse_session_file(path: Path) -> SessionRecord | None:
 
 def collect_usage(codex_home: Path) -> dict[str, Any]:
     files = iter_session_files(codex_home)
+    session_names = load_session_index(codex_home)
     records_by_id: dict[str, SessionRecord] = {}
 
     for path in files:
@@ -756,6 +790,7 @@ def collect_usage(codex_home: Path) -> dict[str, Any]:
                     "timestamp": event.timestamp,
                     "usage": event.usage,
                     "session_id": record.id,
+                    "thread_name": session_names.get(record.id, ""),
                     "cwd": record.cwd,
                 }
 
@@ -768,6 +803,7 @@ def collect_usage(codex_home: Path) -> dict[str, Any]:
                     "started_at": turn.started_at,
                     "usage": turn.usage,
                     "session_id": record.id,
+                    "thread_name": session_names.get(record.id, ""),
                     "cwd": record.cwd,
                 }
 
@@ -790,7 +826,7 @@ def collect_usage(codex_home: Path) -> dict[str, Any]:
             "today": today_usage,
         },
         "rate_limits": decorate_rate_limits(rate_limits),
-        "latest_session": serialize_session(latest_session),
+        "latest_session": serialize_session(latest_session, session_names),
         "latest_request": serialize_latest_request(latest_request),
         "latest_turn": serialize_latest_turn(latest_turn),
         "by_date": [
@@ -799,18 +835,24 @@ def collect_usage(codex_home: Path) -> dict[str, Any]:
         ],
         "by_project": sorted(
             (
-                {"cwd": cwd, "usage": usage, "sessions": project_sessions[cwd]}
+                {
+                    "cwd": cwd,
+                    "project_name": display_project_name(cwd),
+                    "usage": usage,
+                    "sessions": project_sessions[cwd],
+                }
                 for cwd, usage in project_usage.items()
             ),
             key=lambda row: row["usage"]["total_tokens"],
             reverse=True,
         ),
-        "sessions": [serialize_session(record) for record in records],
+        "sessions": [serialize_session(record, session_names) for record in records],
     }
 
 
 def decorate_rate_limits(rate_limits: dict[str, Any]) -> dict[str, Any]:
     decorated: dict[str, Any] = {}
+    now_ms = int(time.time() * 1000)
     for key in ("primary", "secondary"):
         raw = rate_limits.get(key)
         if not isinstance(raw, dict):
@@ -818,6 +860,13 @@ def decorate_rate_limits(rate_limits: dict[str, Any]) -> dict[str, Any]:
             continue
         item = dict(raw)
         item["resets_at_text"] = timestamp_text(raw.get("resets_at"))
+        item["resets_at_ms"] = timestamp_ms(raw.get("resets_at"))
+        item["reset_passed"] = bool(item["resets_at_ms"] and now_ms >= item["resets_at_ms"])
+        if item["reset_passed"]:
+            item["used_percent"] = 0
+            item["remaining_percent"] = 100
+            decorated[key] = item
+            continue
         item["remaining_percent"] = remaining_percent(item)
         remaining = remaining_tokens(item)
         if remaining is not None:
@@ -870,13 +919,16 @@ def first_int(source: dict[str, Any], keys: tuple[str, ...]) -> int | None:
     return None
 
 
-def serialize_session(record: SessionRecord | None) -> dict[str, Any]:
+def serialize_session(record: SessionRecord | None, session_names: dict[str, str] | None = None) -> dict[str, Any]:
     if record is None:
         return {}
+    session_names = session_names or {}
     return {
         "id": record.id,
+        "thread_name": session_names.get(record.id, ""),
         "file": record.file,
         "cwd": record.cwd,
+        "project_name": display_project_name(record.cwd),
         "started_at": record.started_at.isoformat() if record.started_at else "",
         "started_at_local": local_text(record.started_at),
         "latest_token_at": record.latest_token_at.isoformat() if record.latest_token_at else "",
@@ -895,7 +947,9 @@ def serialize_latest_request(latest_request: dict[str, Any]) -> dict[str, Any]:
         "timestamp_local": local_text(timestamp),
         "usage": latest_request["usage"],
         "session_id": latest_request["session_id"],
+        "thread_name": latest_request.get("thread_name", ""),
         "cwd": latest_request["cwd"],
+        "project_name": display_project_name(latest_request["cwd"]),
     }
 
 
@@ -911,7 +965,9 @@ def serialize_latest_turn(latest_turn: dict[str, Any]) -> dict[str, Any]:
         "started_at_local": local_text(started_at) if isinstance(started_at, datetime) else "",
         "usage": latest_turn["usage"],
         "session_id": latest_turn["session_id"],
+        "thread_name": latest_turn.get("thread_name", ""),
         "cwd": latest_turn["cwd"],
+        "project_name": display_project_name(latest_turn["cwd"]),
     }
 
 
@@ -951,21 +1007,22 @@ class UsageHandler(BaseHTTPRequestHandler):
 
     def send_text(self, status: int, body: str, content_type: str) -> None:
         encoded = body.encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(encoded)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(encoded)
+        self.send_bytes(status, encoded, content_type)
 
     def send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        self.send_bytes(status, body, "application/json; charset=utf-8")
+
+    def send_bytes(self, status: int, body: bytes, content_type: str) -> None:
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            pass
 
 
 def default_codex_home() -> Path:

@@ -430,6 +430,7 @@
       background: #fbfcfa;
       text-align: left;
       font-weight: 650;
+      white-space: nowrap;
     }
 
     td {
@@ -451,11 +452,11 @@
     }
 
     .session-table col:nth-child(2) {
-      width: 24%;
+      width: 18%;
     }
 
     .session-table col:nth-child(n+3) {
-      width: 10%;
+      width: 11%;
     }
 
     .path-cell {
@@ -711,7 +712,7 @@
               </colgroup>
               <thead>
                 <tr>
-                  <th>会话 ID</th>
+                  <th>会话</th>
                   <th class="hide-sm">项目</th>
                   <th class="num">输入</th>
                   <th class="num hide-sm">非缓存输入</th>
@@ -857,6 +858,17 @@
       return String(path);
     }
 
+    function displayProject(row) {
+      if (row.project_name) return row.project_name;
+      const path = row.cwd || "";
+      const parts = String(path).split(/[\\/]+/).filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : "未知项目";
+    }
+
+    function displaySession(row) {
+      return row.thread_name || row.id || "未知会话";
+    }
+
     function parseLocalDate(dateText) {
       const [year, month, day] = String(dateText || "").split("-").map(Number);
       return new Date(year, month - 1, day);
@@ -920,7 +932,17 @@
     }
 
     function normalizeRate(item) {
-      if (!item) return { remainPercent: 0, remainTokens: null, reset: "" };
+      if (!item) return { remainPercent: 0, remainTokens: null, reset: "", resetPassed: false };
+      const resetMs = Number(item.resets_at_ms || 0);
+      const resetPassed = Boolean(item.reset_passed) || (resetMs > 0 && Date.now() >= resetMs);
+      if (resetPassed) {
+        return {
+          remainPercent: 100,
+          remainTokens: null,
+          reset: item.resets_at_text || "",
+          resetPassed: true
+        };
+      }
       const usedPercent = Number(item.used_percent ?? 0);
       const remainPercent = Number(item.remaining_percent ?? Math.max(0, 100 - usedPercent));
       const limit = Number(item.limit ?? item.token_limit ?? 0);
@@ -929,7 +951,8 @@
       return {
         remainPercent: Math.max(0, Math.min(100, remainPercent)),
         remainTokens,
-        reset: item.resets_at_text || ""
+        reset: item.resets_at_text || "",
+        resetPassed: false
       };
     }
 
@@ -938,9 +961,17 @@
       const donut = ids(`${kind}Donut`);
       donut.style.setProperty("--remain", `${rate.remainPercent}%`);
       ids(`${kind}Remain`).textContent = `${rate.remainPercent.toFixed(0)}%`;
-      const tokenText = rate.remainTokens == null ? `剩余约 ${rate.remainPercent.toFixed(0)}%` : `剩余 ${fmtToken(rate.remainTokens)}`;
-      ids(`${kind}Meta`).textContent = rate.reset ? `${rate.reset} 重置` : tokenText;
+      const tokenText = rate.resetPassed
+        ? "已到重置时间，等待下次同步"
+        : rate.remainTokens == null ? `剩余约 ${rate.remainPercent.toFixed(0)}%` : `剩余 ${fmtToken(rate.remainTokens)}`;
+      ids(`${kind}Meta`).textContent = rate.resetPassed ? tokenText : rate.reset ? `${rate.reset} 重置` : tokenText;
       ids(`${kind}Meta`).title = rate.remainTokens == null ? tokenText : `剩余 ${fmt(rate.remainTokens)}`;
+    }
+
+    function renderRatesOnly() {
+      if (!state.data) return;
+      renderRate("primary", state.data.rate_limits && state.data.rate_limits.primary);
+      renderRate("secondary", state.data.rate_limits && state.data.rate_limits.secondary);
     }
 
     function renderConversation(target, metaTarget, source, fallbackMeta) {
@@ -952,7 +983,7 @@
         </div>
       `).join("");
       ids(metaTarget).textContent = source && (source.timestamp_local || source.session_id)
-        ? `${source.timestamp_local || "时间未知"} · ${source.session_id || "会话未知"}`
+        ? `${source.timestamp_local || "时间未知"} · ${source.thread_name || source.session_id || "会话未知"}`
         : fallbackMeta;
     }
 
@@ -968,9 +999,10 @@
         tbody.innerHTML = visible.map((row) => {
           const usage = usageOf(row.usage);
           const cwd = row.cwd || "未知项目";
+          const projectName = displayProject(row);
           return `
             <tr>
-              <td class="path-cell" title="${escapeHtml(cwd)}">${escapeHtml(shortPath(cwd))}</td>
+              <td class="path-cell" title="${escapeHtml(cwd)}">${escapeHtml(projectName)}</td>
               ${tokenCell("输入", usage.input_tokens)}
               ${tokenCell("非缓存输入", usage.non_cached_input_tokens, "hide-sm")}
               ${tokenCell("缓存输入", usage.cached_input_tokens, "hide-sm")}
@@ -984,10 +1016,12 @@
           const usage = usageOf(row.total_usage);
           const sessionId = row.id || "未知会话";
           const cwd = row.cwd || "未知项目";
+          const sessionName = displaySession(row);
+          const projectName = displayProject(row);
           return `
             <tr>
-              <td class="mono" title="${escapeHtml(sessionId)}">${escapeHtml(sessionId)}</td>
-              <td class="path-cell hide-sm" title="${escapeHtml(cwd)}">${escapeHtml(shortPath(cwd))}</td>
+              <td class="mono" title="${escapeHtml(sessionId)}">${escapeHtml(sessionName)}</td>
+              <td class="path-cell hide-sm" title="${escapeHtml(cwd)}">${escapeHtml(projectName)}</td>
               ${tokenCell("输入", usage.input_tokens)}
               ${tokenCell("非缓存输入", usage.non_cached_input_tokens, "hide-sm")}
               ${tokenCell("缓存输入", usage.cached_input_tokens, "hide-sm")}
@@ -1022,8 +1056,7 @@
 
     function renderAll() {
       renderSummary();
-      renderRate("primary", state.data.rate_limits && state.data.rate_limits.primary);
-      renderRate("secondary", state.data.rate_limits && state.data.rate_limits.secondary);
+      renderRatesOnly();
       renderConversation("latestTurn", "latestTurnMeta", state.data.latest_turn || state.data.latest_request, "暂无最近对话数据");
       renderTables();
     }
@@ -1131,6 +1164,7 @@
     });
 
     loadData();
+    setInterval(renderRatesOnly, 1000);
     setInterval(loadData, 5000);
   </script>
 </body>
