@@ -1,0 +1,1105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codex 用量统计</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6f2;
+      --surface: #ffffff;
+      --surface-soft: #eef1ed;
+      --surface-warm: #fbfaf6;
+      --ink: #171b19;
+      --muted: #66716b;
+      --line: #d9ded8;
+      --accent: #137b61;
+      --accent-soft: #dcece5;
+      --blue: #275c8d;
+      --gold: #9b6a12;
+      --red: #a9362f;
+      --shadow: 0 12px 32px rgba(23, 27, 25, 0.07);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .shell {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 18px 24px 36px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 58px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 22px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.15;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .subtle {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+
+    .dot.offline {
+      background: var(--red);
+      box-shadow: 0 0 0 4px #f4dedb;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 370px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .overview {
+      display: grid;
+      gap: 16px;
+    }
+
+    .panel {
+      min-width: 0;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .panel.flush {
+      box-shadow: none;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.25;
+      font-weight: 720;
+    }
+
+    .segmented {
+      display: inline-grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 2px;
+      padding: 3px;
+      background: var(--surface-soft);
+      border-radius: var(--radius);
+    }
+
+    .segmented button {
+      min-width: 72px;
+      height: 32px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .segmented button.active {
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 1px 2px rgba(23, 27, 25, 0.08);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line);
+    }
+
+    .metric {
+      position: relative;
+      min-width: 0;
+      padding: 18px 16px;
+      border-right: 1px solid var(--line);
+    }
+
+    .metric:last-child {
+      border-right: 0;
+    }
+
+    .metric label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: clamp(20px, 2vw, 30px);
+      line-height: 1;
+      font-weight: 780;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric.total strong {
+      color: var(--accent);
+    }
+
+    .composition {
+      padding: 18px;
+    }
+
+    .composition-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+
+    .stack {
+      display: flex;
+      width: 100%;
+      height: 18px;
+      overflow: visible;
+      border-radius: 999px;
+      background: var(--surface-soft);
+    }
+
+    .stack button {
+      position: relative;
+      min-width: 6px;
+      height: 18px;
+      border: 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.72);
+      transition: transform 160ms ease, filter 160ms ease;
+    }
+
+    .stack button:first-child {
+      border-top-left-radius: 999px;
+      border-bottom-left-radius: 999px;
+    }
+
+    .stack button:last-child {
+      border-right: 0;
+      border-top-right-radius: 999px;
+      border-bottom-right-radius: 999px;
+    }
+
+    .stack button:hover {
+      transform: translateY(-2px);
+      filter: saturate(1.12);
+      z-index: 2;
+    }
+
+    .stack button:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      transform: translateX(-50%);
+      white-space: nowrap;
+      color: #fff;
+      background: #1e2421;
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 12px;
+      box-shadow: 0 10px 24px rgba(23, 27, 25, 0.22);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend i {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .side {
+      display: grid;
+      gap: 16px;
+    }
+
+    .rings {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .ring {
+      display: grid;
+      justify-items: center;
+      gap: 10px;
+      min-width: 0;
+      padding: 14px 10px 12px;
+      background: var(--surface-warm);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .donut {
+      --remain: 0%;
+      width: 118px;
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at center, var(--surface-warm) 58%, transparent 59%),
+        conic-gradient(var(--accent) var(--remain), #e1e5df 0);
+    }
+
+    .donut strong {
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 780;
+    }
+
+    .ring label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .ring span {
+      color: var(--ink);
+      font-size: 12px;
+      text-align: center;
+      min-height: 18px;
+      line-height: 1.35;
+    }
+
+    .conversation {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .mini {
+      min-width: 0;
+      padding: 14px 10px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .mini:last-child {
+      border-right: 0;
+    }
+
+    .mini label {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 8px;
+      white-space: nowrap;
+    }
+
+    .mini strong {
+      display: block;
+      font-size: 17px;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .conversation-meta {
+      padding: 13px 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tables {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .table-tools {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    select {
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 0 26px 0 9px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+      line-height: 1.35;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      background: #fbfcfa;
+      text-align: left;
+      font-weight: 650;
+    }
+
+    td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .project-table col:first-child {
+      width: 38%;
+    }
+
+    .project-table col:not(:first-child) {
+      width: 12.4%;
+    }
+
+    .session-table col:nth-child(1) {
+      width: 18%;
+    }
+
+    .session-table col:nth-child(2) {
+      width: 28%;
+    }
+
+    .session-table col:nth-child(n+3) {
+      width: 10.8%;
+    }
+
+    .path-cell {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+    }
+
+    .token-value {
+      white-space: nowrap;
+    }
+
+    tbody tr:hover {
+      background: #f8faf7;
+    }
+
+    .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 9px;
+      padding: 12px 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pager button {
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    .pager button:disabled {
+      cursor: default;
+      color: #a0aaa3;
+      background: var(--surface-soft);
+    }
+
+    .empty {
+      padding: 18px 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    [data-animate] {
+      animation: rise 420ms ease both;
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 1080px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .side {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 780px) {
+      .shell {
+        padding: 14px 14px 28px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        padding-bottom: 14px;
+      }
+
+      .brand {
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .panel-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .metrics, .conversation {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .metric:nth-child(2n), .mini:nth-child(2n) {
+        border-right: 0;
+      }
+
+      .metric.total, .mini:last-child {
+        grid-column: span 2;
+      }
+
+      .side {
+        grid-template-columns: 1fr;
+      }
+
+      .hide-sm {
+        display: none;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .rings {
+        grid-template-columns: 1fr;
+      }
+
+      .segmented {
+        width: 100%;
+      }
+
+      .segmented button {
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Codex 用量统计</h1>
+        <span class="subtle">按时间、项目、会话追踪Token消耗</span>
+      </div>
+      <div class="status">
+        <i class="dot" id="statusDot"></i>
+        <span id="statusText">正在读取数据</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="workspace">
+        <div class="overview">
+          <section class="panel" data-animate>
+            <div class="panel-head">
+              <div>
+                <h2>消耗概览</h2>
+                <div class="subtle" id="periodNote">当天统计</div>
+              </div>
+              <div class="segmented" aria-label="统计周期">
+                <button class="active" data-period="day">当天</button>
+                <button data-period="week">本周</button>
+                <button data-period="month">当月</button>
+              </div>
+            </div>
+            <div class="metrics" id="summaryMetrics"></div>
+            <div class="composition">
+              <div class="composition-head">
+                <h2>Token构成</h2>
+                <span class="subtle">鼠标悬停查看具体数值</span>
+              </div>
+              <div class="stack" id="compositionStack"></div>
+              <div class="legend" id="compositionLegend"></div>
+            </div>
+          </section>
+
+          <section class="panel flush" data-animate>
+            <div class="panel-head">
+              <div>
+                <h2>项目用量</h2>
+                <div class="subtle">按工作区汇总，可修改每页条数</div>
+              </div>
+              <div class="table-tools">
+                <span>每页</span>
+                <select id="projectPageSize">
+                  <option>5</option>
+                  <option selected>10</option>
+                  <option>20</option>
+                  <option>50</option>
+                </select>
+              </div>
+            </div>
+            <table class="project-table">
+              <colgroup>
+                <col>
+                <col>
+                <col>
+                <col>
+                <col>
+                <col>
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>项目</th>
+                  <th class="num">输入</th>
+                  <th class="num hide-sm">缓存输入</th>
+                  <th class="num hide-sm">输出</th>
+                  <th class="num hide-sm">推理输出</th>
+                  <th class="num">总计</th>
+                </tr>
+              </thead>
+              <tbody id="projectRows"></tbody>
+            </table>
+            <div class="pager" id="projectPager"></div>
+          </section>
+
+          <section class="panel flush" data-animate>
+            <div class="panel-head">
+              <div>
+                <h2>会话用量</h2>
+                <div class="subtle">以会话 ID 为维度统计消耗量</div>
+              </div>
+              <div class="table-tools">
+                <span>每页</span>
+                <select id="sessionPageSize">
+                  <option>5</option>
+                  <option selected>10</option>
+                  <option>20</option>
+                  <option>50</option>
+                </select>
+              </div>
+            </div>
+            <table class="session-table">
+              <colgroup>
+                <col>
+                <col>
+                <col>
+                <col>
+                <col>
+                <col>
+                <col>
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>会话 ID</th>
+                  <th class="hide-sm">项目</th>
+                  <th class="num">输入</th>
+                  <th class="num hide-sm">缓存输入</th>
+                  <th class="num hide-sm">输出</th>
+                  <th class="num hide-sm">推理输出</th>
+                  <th class="num">总计</th>
+                </tr>
+              </thead>
+              <tbody id="sessionRows"></tbody>
+            </table>
+            <div class="pager" id="sessionPager"></div>
+          </section>
+        </div>
+
+        <aside class="side">
+          <section class="panel" data-animate>
+            <div class="panel-head">
+              <div>
+                <h2>额度剩余</h2>
+                <div class="subtle">5 小时与一周限制</div>
+              </div>
+            </div>
+            <div class="rings">
+              <div class="ring">
+                <div class="donut" id="primaryDonut"><strong id="primaryRemain">0%</strong></div>
+                <label>5 小时剩余</label>
+                <span id="primaryMeta">等待数据</span>
+              </div>
+              <div class="ring">
+                <div class="donut" id="secondaryDonut"><strong id="secondaryRemain">0%</strong></div>
+                <label>一周剩余</label>
+                <span id="secondaryMeta">等待数据</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" data-animate>
+            <div class="panel-head">
+              <div>
+                <h2>最近一次对话</h2>
+                <div class="subtle">以一轮对话来回为维度</div>
+              </div>
+            </div>
+            <div class="conversation" id="latestTurn"></div>
+            <div class="conversation-meta" id="latestTurnMeta">暂无数据</div>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const TOKEN_FIELDS = [
+      { key: "input_tokens", label: "输入", color: "#137b61" },
+      { key: "cached_input_tokens", label: "缓存输入", color: "#7c9d68" },
+      { key: "output_tokens", label: "输出", color: "#275c8d" },
+      { key: "reasoning_output_tokens", label: "推理输出", color: "#9b6a12" },
+      { key: "total_tokens", label: "总计", color: "#171b19" }
+    ];
+
+    const DETAIL_FIELDS = TOKEN_FIELDS.slice(0, 4);
+    const ids = (name) => document.getElementById(name);
+    const nf = new Intl.NumberFormat("zh-CN");
+    const state = {
+      data: null,
+      period: "day",
+      projectPage: 1,
+      projectPageSize: 10,
+      sessionPage: 1,
+      sessionPageSize: 10
+    };
+
+    function fmt(value) {
+      return nf.format(Number(value || 0));
+    }
+
+    function fmtToken(value) {
+      const num = Number(value || 0);
+      if (Math.abs(num) < 1000) return fmt(num);
+      const kValue = Math.round(num / 100) / 10;
+      return `${nf.format(kValue)}K`;
+    }
+
+    function tokenTitle(label, value) {
+      return `${label}：${fmt(value)}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function tokenCell(label, value, extraClass = "") {
+      return `<td class="num token-value ${extraClass}" title="${tokenTitle(label, value)}">${fmtToken(value)}</td>`;
+    }
+
+    function emptyUsage() {
+      return {
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 0
+      };
+    }
+
+    function usageOf(value) {
+      return Object.assign(emptyUsage(), value || {});
+    }
+
+    function addUsage(target, usage) {
+      TOKEN_FIELDS.forEach((field) => {
+        target[field.key] += Number((usage || {})[field.key] || 0);
+      });
+      return target;
+    }
+
+    function shortPath(path) {
+      if (!path) return "未知项目";
+      return String(path);
+    }
+
+    function parseLocalDate(dateText) {
+      const [year, month, day] = String(dateText || "").split("-").map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    function isSameWeek(dateText, todayText) {
+      const date = parseLocalDate(dateText);
+      const today = parseLocalDate(todayText);
+      const day = today.getDay() || 7;
+      const start = new Date(today);
+      start.setDate(today.getDate() - day + 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 7);
+      return date >= start && date < end;
+    }
+
+    function aggregatePeriod(data, period) {
+      const total = emptyUsage();
+      const today = data.today || new Date().toISOString().slice(0, 10);
+      const month = today.slice(0, 7);
+      (data.by_date || []).forEach((row) => {
+        const date = row.date || "";
+        const include =
+          period === "day" ? date === today :
+          period === "week" ? isSameWeek(date, today) :
+          date.startsWith(month);
+        if (include) addUsage(total, usageOf(row.usage));
+      });
+      return total;
+    }
+
+    function periodLabel(period) {
+      if (period === "week") return "本周统计";
+      if (period === "month") return "当月统计";
+      return "当天统计";
+    }
+
+    function renderSummary() {
+      const total = aggregatePeriod(state.data, state.period);
+      ids("periodNote").textContent = `${periodLabel(state.period)}，日期基准 ${state.data.today || "本地日期"}`;
+      ids("summaryMetrics").innerHTML = TOKEN_FIELDS.map((field) => `
+        <div class="metric ${field.key === "total_tokens" ? "total" : ""}" title="${tokenTitle(field.label, total[field.key])}">
+          <label>${field.label}</label>
+          <strong>${fmtToken(total[field.key])}</strong>
+        </div>
+      `).join("");
+      renderComposition(total);
+    }
+
+    function renderComposition(total) {
+      const sum = DETAIL_FIELDS.reduce((acc, field) => acc + Number(total[field.key] || 0), 0);
+      ids("compositionStack").innerHTML = DETAIL_FIELDS.map((field) => {
+        const value = Number(total[field.key] || 0);
+        const width = sum > 0 ? Math.max(2, value / sum * 100) : 25;
+        return `<button style="width:${width}%;background:${field.color}" data-tip="${tokenTitle(field.label, value)}" title="${tokenTitle(field.label, value)}"></button>`;
+      }).join("");
+      ids("compositionLegend").innerHTML = DETAIL_FIELDS.map((field) => `
+        <span><i style="background:${field.color}"></i>${field.label}</span>
+      `).join("");
+    }
+
+    function normalizeRate(item) {
+      if (!item) return { remainPercent: 0, remainTokens: null, reset: "" };
+      const usedPercent = Number(item.used_percent ?? 0);
+      const remainPercent = Number(item.remaining_percent ?? Math.max(0, 100 - usedPercent));
+      const limit = Number(item.limit ?? item.token_limit ?? 0);
+      const used = Number(item.used_tokens ?? item.used ?? 0);
+      const remainTokens = item.remaining_tokens ?? item.remaining ?? (limit ? Math.max(0, limit - used) : null);
+      return {
+        remainPercent: Math.max(0, Math.min(100, remainPercent)),
+        remainTokens,
+        reset: item.resets_at_text || ""
+      };
+    }
+
+    function renderRate(kind, raw) {
+      const rate = normalizeRate(raw);
+      const donut = ids(`${kind}Donut`);
+      donut.style.setProperty("--remain", `${rate.remainPercent}%`);
+      ids(`${kind}Remain`).textContent = `${rate.remainPercent.toFixed(0)}%`;
+      const tokenText = rate.remainTokens == null ? `剩余约 ${rate.remainPercent.toFixed(0)}%` : `剩余 ${fmtToken(rate.remainTokens)}`;
+      ids(`${kind}Meta`).textContent = rate.reset ? `${rate.reset} 重置` : tokenText;
+      ids(`${kind}Meta`).title = rate.remainTokens == null ? tokenText : `剩余 ${fmt(rate.remainTokens)}`;
+    }
+
+    function renderConversation(target, metaTarget, source, fallbackMeta) {
+      const usage = usageOf(source && source.usage);
+      ids(target).innerHTML = TOKEN_FIELDS.map((field) => `
+        <div class="mini" title="${tokenTitle(field.label, usage[field.key])}">
+          <label>${field.label}</label>
+          <strong>${fmtToken(usage[field.key])}</strong>
+        </div>
+      `).join("");
+      ids(metaTarget).textContent = source && (source.timestamp_local || source.session_id)
+        ? `${source.timestamp_local || "时间未知"} · ${source.session_id || "会话未知"}`
+        : fallbackMeta;
+    }
+
+    function renderRows(kind, rows, page, pageSize) {
+      const start = (page - 1) * pageSize;
+      const visible = rows.slice(start, start + pageSize);
+      const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+      const tbody = ids(kind === "project" ? "projectRows" : "sessionRows");
+      if (!visible.length) {
+        const colspan = kind === "project" ? 6 : 7;
+        tbody.innerHTML = `<tr><td colspan="${colspan}" class="empty">暂无数据</td></tr>`;
+      } else if (kind === "project") {
+        tbody.innerHTML = visible.map((row) => {
+          const usage = usageOf(row.usage);
+          const cwd = row.cwd || "未知项目";
+          return `
+            <tr>
+              <td class="path-cell" title="${escapeHtml(cwd)}">${escapeHtml(shortPath(cwd))}</td>
+              ${tokenCell("输入", usage.input_tokens)}
+              ${tokenCell("缓存输入", usage.cached_input_tokens, "hide-sm")}
+              ${tokenCell("输出", usage.output_tokens, "hide-sm")}
+              ${tokenCell("推理输出", usage.reasoning_output_tokens, "hide-sm")}
+              ${tokenCell("总计", usage.total_tokens)}
+            </tr>`;
+        }).join("");
+      } else {
+        tbody.innerHTML = visible.map((row) => {
+          const usage = usageOf(row.total_usage);
+          const sessionId = row.id || "未知会话";
+          const cwd = row.cwd || "未知项目";
+          return `
+            <tr>
+              <td class="mono" title="${escapeHtml(sessionId)}">${escapeHtml(sessionId)}</td>
+              <td class="path-cell hide-sm" title="${escapeHtml(cwd)}">${escapeHtml(shortPath(cwd))}</td>
+              ${tokenCell("输入", usage.input_tokens)}
+              ${tokenCell("缓存输入", usage.cached_input_tokens, "hide-sm")}
+              ${tokenCell("输出", usage.output_tokens, "hide-sm")}
+              ${tokenCell("推理输出", usage.reasoning_output_tokens, "hide-sm")}
+              ${tokenCell("总计", usage.total_tokens)}
+            </tr>`;
+        }).join("");
+      }
+      renderPager(kind, page, totalPages, rows.length);
+    }
+
+    function renderPager(kind, page, totalPages, totalRows) {
+      const pager = ids(kind === "project" ? "projectPager" : "sessionPager");
+      pager.innerHTML = `
+        <span>第 ${page} / ${totalPages} 页，共 ${fmt(totalRows)} 条</span>
+        <button data-pager="${kind}" data-dir="-1" ${page <= 1 ? "disabled" : ""} aria-label="上一页">‹</button>
+        <button data-pager="${kind}" data-dir="1" ${page >= totalPages ? "disabled" : ""} aria-label="下一页">›</button>
+      `;
+    }
+
+    function renderTables() {
+      const projects = (state.data.by_project || []).slice().sort((a, b) => {
+        return Number((b.usage || {}).total_tokens || 0) - Number((a.usage || {}).total_tokens || 0);
+      });
+      const sessions = (state.data.sessions || []).slice().sort((a, b) => {
+        return Number((b.total_usage || {}).total_tokens || 0) - Number((a.total_usage || {}).total_tokens || 0);
+      });
+      renderRows("project", projects, state.projectPage, state.projectPageSize);
+      renderRows("session", sessions, state.sessionPage, state.sessionPageSize);
+    }
+
+    function renderAll() {
+      renderSummary();
+      renderRate("primary", state.data.rate_limits && state.data.rate_limits.primary);
+      renderRate("secondary", state.data.rate_limits && state.data.rate_limits.secondary);
+      renderConversation("latestTurn", "latestTurnMeta", state.data.latest_turn || state.data.latest_request, "暂无最近对话数据");
+      renderTables();
+    }
+
+    function setStatus(text, offline = false) {
+      ids("statusText").textContent = text;
+      ids("statusDot").classList.toggle("offline", offline);
+    }
+
+    function demoData() {
+      const today = new Date().toISOString().slice(0, 10);
+      return {
+        today,
+        generated_at_local: "示例数据",
+        rate_limits: {
+          primary: { used_percent: 63.4, remaining_tokens: 184000, resets_at_text: "14:20" },
+          secondary: { used_percent: 41.8, remaining_tokens: 928000, resets_at_text: "周一 09:00" }
+        },
+        latest_request: {
+          timestamp_local: "刚刚",
+          session_id: "demo-last-request",
+          usage: { input_tokens: 1240, cached_input_tokens: 880, output_tokens: 710, reasoning_output_tokens: 320, total_tokens: 3150 }
+        },
+        latest_turn: {
+          timestamp_local: "刚刚",
+          session_id: "demo-last-turn",
+          usage: { input_tokens: 2480, cached_input_tokens: 930, output_tokens: 1160, reasoning_output_tokens: 740, total_tokens: 5310 }
+        },
+        by_date: [
+          { date: today, usage: { input_tokens: 38200, cached_input_tokens: 14300, output_tokens: 17700, reasoning_output_tokens: 8200, total_tokens: 78400 } },
+          { date: offsetDate(-1), usage: { input_tokens: 29100, cached_input_tokens: 9300, output_tokens: 12800, reasoning_output_tokens: 5400, total_tokens: 56600 } },
+          { date: offsetDate(-2), usage: { input_tokens: 44800, cached_input_tokens: 12100, output_tokens: 20100, reasoning_output_tokens: 9700, total_tokens: 86700 } },
+          { date: offsetDate(-5), usage: { input_tokens: 22600, cached_input_tokens: 5800, output_tokens: 9700, reasoning_output_tokens: 3300, total_tokens: 41400 } },
+          { date: offsetDate(-12), usage: { input_tokens: 36600, cached_input_tokens: 10600, output_tokens: 15100, reasoning_output_tokens: 6400, total_tokens: 68700 } }
+        ],
+        by_project: Array.from({ length: 18 }, (_, index) => ({
+          cwd: `D:/work/project-${String(index + 1).padStart(2, "0")}`,
+          usage: makeUsage(42000 - index * 1350)
+        })),
+        sessions: Array.from({ length: 27 }, (_, index) => ({
+          id: `session-${String(index + 1).padStart(3, "0")}`,
+          cwd: `D:/work/project-${String((index % 8) + 1).padStart(2, "0")}`,
+          total_usage: makeUsage(26000 - index * 520)
+        }))
+      };
+    }
+
+    function offsetDate(offset) {
+      const date = new Date();
+      date.setDate(date.getDate() + offset);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function makeUsage(total) {
+      return {
+        input_tokens: Math.max(0, Math.round(total * 0.48)),
+        cached_input_tokens: Math.max(0, Math.round(total * 0.16)),
+        output_tokens: Math.max(0, Math.round(total * 0.24)),
+        reasoning_output_tokens: Math.max(0, Math.round(total * 0.12)),
+        total_tokens: Math.max(0, total)
+      };
+    }
+
+    async function loadData() {
+      try {
+        const response = await fetch("/api/usage", { cache: "no-store" });
+        if (!response.ok) throw new Error(`接口返回 ${response.status}`);
+        state.data = await response.json();
+        setStatus(`已更新 ${state.data.generated_at_local || ""}`);
+      } catch (error) {
+        state.data = demoData();
+        setStatus("正在展示示例数据，连接后端后自动读取接口", true);
+      }
+      renderAll();
+    }
+
+    document.querySelectorAll("[data-period]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.period = button.dataset.period;
+        document.querySelectorAll("[data-period]").forEach((item) => item.classList.toggle("active", item === button));
+        renderSummary();
+      });
+    });
+
+    ids("projectPageSize").addEventListener("change", (event) => {
+      state.projectPageSize = Number(event.target.value);
+      state.projectPage = 1;
+      renderTables();
+    });
+
+    ids("sessionPageSize").addEventListener("change", (event) => {
+      state.sessionPageSize = Number(event.target.value);
+      state.sessionPage = 1;
+      renderTables();
+    });
+
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-pager]");
+      if (!button) return;
+      const kind = button.dataset.pager;
+      const dir = Number(button.dataset.dir);
+      if (kind === "project") state.projectPage = Math.max(1, state.projectPage + dir);
+      if (kind === "session") state.sessionPage = Math.max(1, state.sessionPage + dir);
+      renderTables();
+    });
+
+    loadData();
+    setInterval(loadData, 5000);
+  </script>
+</body>
+</html>
