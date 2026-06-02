@@ -8,6 +8,10 @@
 
 它不是用来和官方统计一较高下的。官方额度、服务端计费、缓存折算、隐藏上下文、工具调用和滚动窗口，本来就可能和本地 session 文件的口径不完全一致。这个项目更像一个“差异放大镜”：当第三方账单看起来非常玄学时，至少可以多一个本地视角来判断问题是不是大到不正常。
 
+## 界面
+
+![Codex 用量统计界面](assets/img.png)
+
 ## 功能
 
 - 查看当天、本周、当月 token 消耗
@@ -29,6 +33,7 @@ assets/
   codex_usage_icon.ico  Windows 图标
   codex_usage_icon.icns macOS 图标
   codex_usage_icon.png  PNG 图标
+  img.png               README 截图
 ```
 
 ## 安装依赖
@@ -73,7 +78,7 @@ python desktop.py
 ## 打包 Windows 桌面版
 
 ```powershell
-pyinstaller --onefile --noconsole --name codex-usage-desktop --icon assets\codex_usage_icon.ico --add-data "codex_usage.html;." desktop.py
+pyinstaller --onefile --noconsole --name codex-usage-windows --icon assets\codex_usage_icon.ico --add-data "codex_usage.html;." desktop.py
 ```
 
 生成文件：
@@ -93,7 +98,7 @@ dist\codex-usage-desktop.exe
 需要在 macOS 上执行：
 
 ```bash
-pyinstaller --onefile --windowed --name codex-usage-desktop --icon assets/codex_usage_icon.icns --add-data "codex_usage.html:." desktop.py
+pyinstaller --onefile --windowed --name codex-usage-macos --icon assets/codex_usage_icon.icns --add-data "codex_usage.html:." desktop.py
 ```
 
 ## 打包 Linux
@@ -101,7 +106,7 @@ pyinstaller --onefile --windowed --name codex-usage-desktop --icon assets/codex_
 需要在 Linux 上执行：
 
 ```bash
-pyinstaller --onefile --windowed --name codex-usage-desktop --add-data "codex_usage.html:." desktop.py
+pyinstaller --onefile --windowed --name codex-usage-linux --add-data "codex_usage.html:." desktop.py
 ```
 
 ## 常见问题

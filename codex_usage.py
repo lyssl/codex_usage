@@ -541,6 +541,13 @@ class TokenEvent:
 
 
 @dataclass
+class TurnEvent:
+    started_at: datetime
+    latest_token_at: datetime | None = None
+    usage: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
 class SessionRecord:
     id: str
     file: str
@@ -551,6 +558,7 @@ class SessionRecord:
     last_usage: dict[str, int] = field(default_factory=dict)
     rate_limits: dict[str, Any] = field(default_factory=dict)
     token_events: list[TokenEvent] = field(default_factory=list)
+    turn_events: list[TurnEvent] = field(default_factory=list)
 
 
 def empty_usage() -> dict[str, int]:
@@ -635,6 +643,7 @@ def fallback_session_id(path: Path) -> str:
 
 def parse_session_file(path: Path) -> SessionRecord | None:
     record = SessionRecord(id=fallback_session_id(path), file=str(path))
+    current_turn: TurnEvent | None = None
     try:
         with path.open("r", encoding="utf-8", errors="replace") as handle:
             for line in handle:
@@ -658,6 +667,12 @@ def parse_session_file(path: Path) -> SessionRecord | None:
 
                 if item_type != "event_msg" or not isinstance(payload, dict):
                     continue
+                if payload.get("type") == "user_message":
+                    if current_turn is not None and current_turn.latest_token_at is not None:
+                        record.turn_events.append(current_turn)
+                    turn_time = timestamp or record.latest_token_at or record.started_at or datetime.now(timezone.utc)
+                    current_turn = TurnEvent(started_at=turn_time, usage=empty_usage())
+                    continue
                 if payload.get("type") != "token_count":
                     continue
 
@@ -667,6 +682,10 @@ def parse_session_file(path: Path) -> SessionRecord | None:
                 token_time = timestamp or record.latest_token_at or record.started_at
                 if token_time is not None:
                     record.token_events.append(TokenEvent(token_time, last_usage))
+                    if current_turn is None:
+                        current_turn = TurnEvent(started_at=token_time, usage=empty_usage())
+                    add_usage(current_turn.usage, last_usage)
+                    current_turn.latest_token_at = token_time
 
                 if record.latest_token_at is None or (token_time and token_time >= record.latest_token_at):
                     record.latest_token_at = token_time
@@ -676,6 +695,9 @@ def parse_session_file(path: Path) -> SessionRecord | None:
                     record.rate_limits = rate_limits if isinstance(rate_limits, dict) else {}
     except OSError:
         return None
+
+    if current_turn is not None and current_turn.latest_token_at is not None:
+        record.turn_events.append(current_turn)
 
     if record.latest_token_at is None and not record.token_events:
         return None
@@ -710,6 +732,7 @@ def collect_usage(codex_home: Path) -> dict[str, Any]:
     project_usage: dict[str, dict[str, int]] = defaultdict(empty_usage)
     project_sessions: dict[str, int] = defaultdict(int)
     latest_request: dict[str, Any] = {}
+    latest_turn: dict[str, Any] = {}
     token_event_count = 0
     today = datetime.now().astimezone().strftime("%Y-%m-%d")
     today_usage = empty_usage()
@@ -736,6 +759,18 @@ def collect_usage(codex_home: Path) -> dict[str, Any]:
                     "cwd": record.cwd,
                 }
 
+        for turn in record.turn_events:
+            if turn.latest_token_at is None:
+                continue
+            if not latest_turn or turn.latest_token_at > latest_turn["timestamp"]:
+                latest_turn = {
+                    "timestamp": turn.latest_token_at,
+                    "started_at": turn.started_at,
+                    "usage": turn.usage,
+                    "session_id": record.id,
+                    "cwd": record.cwd,
+                }
+
     latest_session = records[0] if records else None
     latest_rate_record = next((record for record in records if record.rate_limits), None)
     rate_limits = latest_rate_record.rate_limits if latest_rate_record else {}
@@ -757,7 +792,7 @@ def collect_usage(codex_home: Path) -> dict[str, Any]:
         "rate_limits": decorate_rate_limits(rate_limits),
         "latest_session": serialize_session(latest_session),
         "latest_request": serialize_latest_request(latest_request),
-        "latest_turn": serialize_latest_request(latest_request),
+        "latest_turn": serialize_latest_turn(latest_turn),
         "by_date": [
             {"date": date_key, "usage": usage}
             for date_key, usage in sorted(by_date.items(), reverse=True)
@@ -861,6 +896,22 @@ def serialize_latest_request(latest_request: dict[str, Any]) -> dict[str, Any]:
         "usage": latest_request["usage"],
         "session_id": latest_request["session_id"],
         "cwd": latest_request["cwd"],
+    }
+
+
+def serialize_latest_turn(latest_turn: dict[str, Any]) -> dict[str, Any]:
+    if not latest_turn:
+        return {}
+    timestamp = latest_turn["timestamp"]
+    started_at = latest_turn.get("started_at")
+    return {
+        "timestamp": timestamp.isoformat(),
+        "timestamp_local": local_text(timestamp),
+        "started_at": started_at.isoformat() if isinstance(started_at, datetime) else "",
+        "started_at_local": local_text(started_at) if isinstance(started_at, datetime) else "",
+        "usage": latest_turn["usage"],
+        "session_id": latest_turn["session_id"],
+        "cwd": latest_turn["cwd"],
     }
 
 
